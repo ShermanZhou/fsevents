@@ -4,20 +4,34 @@ package main
 
 import (
 	"bufio"
-	"io/ioutil"
+	"flag"
+	//"io/ioutil"
+	"bytes"
+	"github.com/fsnotify/fsevents"
 	"log"
 	"os"
+	"os/exec"
 	"runtime"
 	"time"
-
-	"github.com/fsnotify/fsevents"
 )
 
+var SCRIPT string
+var SHELL string
+var shellTask = make(chan bool, 1)
+
 func main() {
-	path, err := ioutil.TempDir("", "fsexample")
+	BASEDIR := flag.String("path", ".", "base dir of static files")
+	pSCRIPT := flag.String("script", "", "script to run when file changes")
+	pSHELL := flag.String("shell", "sh", "shell name")
+
+	flag.Parse()
+	SCRIPT = *pSCRIPT
+	SHELL = *pSHELL
+	/*path, err := ioutil.TempDir("", "fsexample")
 	if err != nil {
 		log.Fatalf("Failed to create TempDir: %v", err)
-	}
+	}*/
+	var path = *BASEDIR
 	dev, err := fsevents.DeviceForPath(path)
 	if err != nil {
 		log.Fatalf("Failed to retrieve device for path: %v", err)
@@ -98,4 +112,24 @@ func logEvent(event fsevents.Event) {
 		}
 	}
 	log.Printf("EventID: %d Path: %s Flags: %s", event.ID, event.Path, note)
+	shellTaskFn := func() {
+		log.Printf("execute script: %s %s", SHELL, SCRIPT)
+		cmd := exec.Command(SHELL, SCRIPT)
+		cmdOutput := &bytes.Buffer{}
+		cmd.Stdout = cmdOutput
+		err := cmd.Run()
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+		}
+		log.Printf("%s", string(cmdOutput.Bytes()))
+		<-shellTask
+	}
+	if SCRIPT != "" {
+		select {
+		case shellTask <- true:
+			shellTaskFn()
+		default:
+
+		}
+	}
 }
