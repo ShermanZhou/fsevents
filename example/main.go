@@ -113,6 +113,9 @@ func logEvent(event fsevents.Event) {
 	}
 	log.Printf("EventID: %d Path: %s Flags: %s", event.ID, event.Path, note)
 	shellTaskFn := func() {
+		defer func() {
+			<-shellTask
+		}()
 		log.Printf("execute script: %s %s", SHELL, SCRIPT)
 		cmd := exec.Command(SHELL, SCRIPT)
 		cmdOutput := &bytes.Buffer{}
@@ -122,12 +125,11 @@ func logEvent(event fsevents.Event) {
 			os.Stderr.WriteString(err.Error())
 		}
 		log.Printf("%s", string(cmdOutput.Bytes()))
-		<-shellTask
 	}
 	if SCRIPT != "" {
 		select {
 		case shellTask <- true:
-			shellTaskFn()
+			go shellTaskFn()
 		default:
 
 		}
